@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  # ──────────────────────────────────────────────
+  # Neo4j 5.x – Graph Database
+  # ──────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    container_name: ckg-neo4j
+    ports:
+      - "7474:7474"   # HTTP / Browser
+      - "7687:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: neo4j/changeme123
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - ./neo4j-schema.cypher:/var/lib/neo4j/import/neo4j-schema.cypher:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p changeme123 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # PostgreSQL 15 + pgvector – Vector Store
+  # ──────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: ckg-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ckg_user
+      POSTGRES_PASSWORD: ckg_pass
+      POSTGRES_DB: ckg_vectors
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckg_user -d ckg_vectors"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Redis 7 – Cache / Session / Queue
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ckg-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  postgres_data:
+  redis_data:
